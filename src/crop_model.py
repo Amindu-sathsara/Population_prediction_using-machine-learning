@@ -23,3 +23,9 @@ def calculate_crop_consumption():
 
 if __name__ == "__main__":
     calculate_crop_consumption()
+
+    # Add any additional processing steps here
+
+    print("✅ Crop model training complete.")
+
+    

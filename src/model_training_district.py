@@ -53,27 +53,31 @@ def train_district_model():
             future_df[["Year_centered", "Year_centered2"]]
         )
 
-        # Combine historical actuals + future predictions for interpolation
-        hist_years = d_dec[["Year", "Population"]].rename(columns={"Population": "Value"})
-        hist_years["is_future"] = False
-        fut_years = future_df[["Year", "Predicted_Population"]].rename(
-            columns={"Predicted_Population": "Value"}
-        )
-        fut_years["is_future"] = True
+        # Build simple monthly forecasts from the yearly predictions.
+        # For now we assume the yearly value is representative of all 12 months
+        # in that year (flat within-year profile).
+        monthly_rows = []
+        for _, row in future_df.iterrows():
+            year_val = int(row["Year"])
+            pop_val = float(row["Predicted_Population"])
+            for month in range(1, 13):
+                month_date = pd.Timestamp(year_val, month, 1)
+                monthly_rows.append(
+                    {
+                        "Date": month_date,
+                        "Predicted_Population": pop_val,
+                        "District": district,
+                    }
+                )
 
-        full = pd.concat([hist_years, fut_years], ignore_index=True)
-        full["Date"] = pd.to_datetime(full["Year"].astype(str) + "-12-31")
-        full = full.set_index("Date").sort_index()
+        monthly_future = pd.DataFrame(monthly_rows)
 
-        # Build a monthly series and keep only future months after last historical year
-        monthly = full[["Value"]].resample("MS").interpolate("linear")
-
+        # Keep only months strictly after the last historical year
         cutoff_date = pd.to_datetime(f"{last_year}-12-31") + pd.DateOffset(months=1)
-        monthly_future = monthly[monthly.index >= cutoff_date].copy()
-        monthly_future["District"] = district
-        monthly_future.rename(columns={"Value": "Predicted_Population"}, inplace=True)
+        monthly_future = monthly_future[monthly_future["Date"] >= cutoff_date]
 
-        all_monthly_forecasts.append(monthly_future)
+        # Use Date as index so the final concatenation preserves it
+        all_monthly_forecasts.append(monthly_future.set_index("Date"))
 
     future_all = pd.concat(all_monthly_forecasts).reset_index().rename(columns={"index": "Date"})
 

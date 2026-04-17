@@ -5,6 +5,8 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
+from national_metrics_utils import upsert_national_metric
+
 
 def train_national_sarima():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,6 +41,16 @@ def train_national_sarima():
 
     print("SARIMA YEARLY MAE:", mae)
     print("SARIMA YEARLY MAPE:", mape)
+
+    metrics_path = upsert_national_metric(
+        project_root=project_root,
+        model_name="SARIMA",
+        mae=mae,
+        mape=mape,
+        train_size=len(train),
+        test_size=len(test),
+        notes="Yearly univariate SARIMA(1,1,1) with no seasonal component.",
+    )
 
     models_dir = os.path.join(project_root, "models")
     os.makedirs(models_dir, exist_ok=True)
@@ -88,6 +100,7 @@ def train_national_sarima():
 
     print(f"✅ SARIMA yearly national forecast saved to {yearly_out}")
     print(f"✅ SARIMA monthly national forecast saved to {monthly_out}")
+    print(f"✅ National metrics updated at {metrics_path}")
 
 
 if __name__ == "__main__":

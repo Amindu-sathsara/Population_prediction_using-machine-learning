@@ -6,13 +6,19 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore")
 
+from pathlib import Path
+
 # Model imports
 from xgboost import XGBRegressor
 from prophet import Prophet
 from sklearn.linear_model import LinearRegression
 
 def predict(date_str, district=None):
-    model_dir = Path("models")
+    # Resolve model directory relative to the project root so this works
+    # whether called from the project root or from src/.
+    base_dir = Path(__file__).resolve().parent
+    project_root = base_dir.parent
+    model_dir = project_root / "models"
     
     # ====================== 1. NATIONAL POPULATION ======================
     try:

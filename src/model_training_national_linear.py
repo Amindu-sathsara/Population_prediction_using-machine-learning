@@ -5,6 +5,8 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
+from national_metrics_utils import upsert_national_metric
+
 
 def build_yearly_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values("Year").reset_index(drop=True)
@@ -42,6 +44,16 @@ def train_national_linear():
     print("LINEAR YEARLY MAE:", mae)
     print("LINEAR YEARLY MAPE:", mape)
 
+    metrics_path = upsert_national_metric(
+        project_root=project_root,
+        model_name="LINEAR",
+        mae=mae,
+        mape=mape,
+        train_size=len(y_train),
+        test_size=len(y_test),
+        notes="Yearly trend model with centered year and squared year features.",
+    )
+
     models_dir = os.path.join(project_root, "models")
     os.makedirs(models_dir, exist_ok=True)
 
@@ -72,26 +84,29 @@ def train_national_linear():
     yearly_out = os.path.join(project_root, "models", "future_national_population_yearly_linear.csv")
     future_df[["Year", "Predicted_Population"]].to_csv(yearly_out, index=False)
 
-    # Monthly interpolation from yearly linear trend
-    all_years = pd.concat([
-        df[["Year", "Population"]].rename(columns={"Population": "Value"}),
-        future_df[["Year", "Predicted_Population"]].rename(columns={"Predicted_Population": "Value"}),
-    ], ignore_index=True)
-    all_years["Date"] = pd.to_datetime(all_years["Year"].astype(str) + "-12-31")
-    all_years = all_years.set_index("Date").sort_index()
+    # Build a simple monthly forecast from the yearly linear predictions.
+    # For now we assume the yearly value applies uniformly across all months
+    # of that year (flat within-year profile).
+    monthly_rows = []
+    for _, row in future_df.iterrows():
+        year_val = int(row["Year"])
+        pop_val = float(row["Predicted_Population"])
+        for month in range(1, 13):
+            month_date = pd.Timestamp(year_val, month, 1)
+            monthly_rows.append({"Date": month_date, "Predicted_Population": pop_val})
 
-    monthly = all_years[["Value"]].resample("MS").interpolate("linear")
+    monthly_df = pd.DataFrame(monthly_rows)
 
     cutoff_date = pd.to_datetime(f"{last_year}-12-31") + pd.DateOffset(months=1)
-    monthly_future = monthly[monthly.index >= cutoff_date].copy()
-    monthly_future.rename(columns={"Value": "Predicted_Population"}, inplace=True)
-    monthly_future.index.name = "Date"
+    monthly_future = monthly_df[monthly_df["Date"] >= cutoff_date].copy()
+    monthly_future = monthly_future.set_index("Date")
 
     monthly_out = os.path.join(models_dir, "future_national_population_linear.csv")
     monthly_future.to_csv(monthly_out)
 
     print(f"✅ Linear yearly national forecast saved to {yearly_out}")
     print(f"✅ Linear monthly national forecast saved to {monthly_out}")
+    print(f"✅ National metrics updated at {metrics_path}")
 
 
 if __name__ == "__main__":

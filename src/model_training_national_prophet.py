@@ -5,6 +5,8 @@ import pandas as pd
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
+from national_metrics_utils import upsert_national_metric
+
 
 def train_national_prophet():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -61,6 +63,16 @@ def train_national_prophet():
     print("PROPHET YEARLY MAE:", mae)
     print("PROPHET YEARLY MAPE:", mape)
 
+    metrics_path = upsert_national_metric(
+        project_root=project_root,
+        model_name="PROPHET",
+        mae=mae,
+        mape=mape,
+        train_size=len(train),
+        test_size=len(test),
+        notes="Yearly logistic-growth Prophet model using data from 1990 onward.",
+    )
+
     models_dir = os.path.join(project_root, "models")
     os.makedirs(models_dir, exist_ok=True)
 
@@ -85,32 +97,35 @@ def train_national_prophet():
     last_obs_date = df["ds"].max()
     future_rows = forecast_full[forecast_full["ds"] > last_obs_date].copy()
     future_rows["Year"] = future_rows["ds"].dt.year
+    # Keep a clear column for yearly predicted population
+    future_rows["Predicted_Population"] = future_rows["yhat"].astype(float)
 
     yearly_out = os.path.join(models_dir, "future_national_population_yearly_prophet.csv")
-    future_rows[["Year", "yhat"]].rename(columns={"yhat": "Predicted_Population"}).to_csv(
-        yearly_out, index=False
-    )
+    future_rows[["Year", "Predicted_Population"]].to_csv(yearly_out, index=False)
 
-    # Create monthly forecast via linear interpolation between yearly Prophet outputs
-    all_years = pd.concat([
-        df[["Year", "Population"]].rename(columns={"Population": "Value"}),
-        future_rows[["Year", "yhat"]].rename(columns={"yhat": "Value"}),
-    ], ignore_index=True)
-    all_years["Date"] = pd.to_datetime(all_years["Year"].astype(str) + "-12-31")
-    all_years = all_years.set_index("Date").sort_index()
+    # Create a monthly forecast from yearly Prophet outputs.
+    # We expand each yearly prediction into 12 identical monthly values
+    # for that calendar year.
+    monthly_rows = []
+    for _, row in future_rows.iterrows():
+        year_val = int(row["Year"])
+        pop_val = float(row["Predicted_Population"])
+        for month in range(1, 13):
+            month_date = pd.Timestamp(year_val, month, 1)
+            monthly_rows.append({"Date": month_date, "Predicted_Population": pop_val})
 
-    monthly = all_years[["Value"]].resample("MS").interpolate("linear")
+    monthly_df = pd.DataFrame(monthly_rows)
 
     cutoff_date = last_obs_date + pd.DateOffset(months=1)
-    monthly_future = monthly[monthly.index >= cutoff_date].copy()
-    monthly_future.rename(columns={"Value": "Predicted_Population"}, inplace=True)
-    monthly_future.index.name = "Date"
+    monthly_future = monthly_df[monthly_df["Date"] >= cutoff_date].copy()
+    monthly_future = monthly_future.set_index("Date")
 
     monthly_out = os.path.join(models_dir, "future_national_population_prophet.csv")
     monthly_future.to_csv(monthly_out)
 
     print(f"✅ Prophet yearly national forecast saved to {yearly_out}")
     print(f"✅ Prophet monthly national forecast saved to {monthly_out}")
+    print(f"✅ National metrics updated at {metrics_path}")
 
 
 if __name__ == "__main__":

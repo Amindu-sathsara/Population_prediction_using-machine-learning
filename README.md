@@ -35,3 +35,14 @@ To get top marks and establish a strong research methodology, adhere to the foll
 2. Install dependencies: `pip install -r requirements.txt`
 3. Run `python src/data_preparation.py` to merge and interpolate your data.
 4. Run `python src/model_training.py` to train the Machine Learning model.
+
+
+How to run this project.......
+
+(National population)
+python src\predict.py --date 2030-01-01
+
+(District Population)
+python src\predict.py --date 2030-01-01 --district Colombo
+
+

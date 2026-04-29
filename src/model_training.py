@@ -72,7 +72,7 @@ def train_population_model():
     print("MAE:", mean_absolute_error(y_test, preds))
     print("MAPE:", mean_absolute_percentage_error(y_test, preds)*100)
 
-    # 📊 Plot
+    # ≡ƒôè Plot
     plt.figure(figsize=(12,6))
     plt.plot(y_test.index, y_test, label='Actual')
     plt.plot(y_test.index, preds, label='Predicted')
@@ -218,6 +218,6 @@ def train_population_model():
         monthly_out = os.path.join(models_dir, "future_national_population.csv")
         future_monthly.to_csv(monthly_out)
 
-        print(f"✅ Yearly national forecast saved to {yearly_out}")
-        print(f"✅ Monthly national forecast (for API) saved to {monthly_out}")
-        print(f"✅ Yearly national model saved to {model_path}")
+        print(f"Γ£à Yearly national forecast saved to {yearly_out}")
+        print(f"Γ£à Monthly national forecast (for API) saved to {monthly_out}")
+        print(f"Γ£à Yearly national model saved to {model_path}")

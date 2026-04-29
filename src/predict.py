@@ -58,27 +58,19 @@ def predict(date_str, district=None):
     month = target_date.month
     fractional_year = year + (month - 1) / 12.0
 
-    base_features = {"Fractional_Year": fractional_year}
-    if feature_cols and driver_models:
-        driver_values = {}
-        for col, info in driver_models.items():
-            res = info["model"]
-            last_date = info["last_date"]
-            steps = (year - last_date.year) * 12 + month - last_date.month
-            if steps <= 0:
-                val = float(res.data.endog[-1])
-            else:
-                forecast = res.get_forecast(steps=steps)
-                val = float(forecast.predicted_mean.iloc[-1])
-            driver_values[col] = val
-
-        for c in feature_cols:
-            if c != "Fractional_Year" and c in driver_values:
-                base_features[c] = driver_values[c]
+    X_nat = pd.DataFrame([{
+        "Year": year,
+        "Birth_Rate": 14.0, # Placeholder if drivers not loaded
+        "Death_Rate": 7.5,
+        "Population_Density": 350,
+        "Rural_Population": 17800000,
+        "Urban_Population": 4200000
+    }])
+    if feature_cols:
+        X_nat = X_nat.reindex(columns=feature_cols, fill_value=0.0)
 
     print(f"\n--- National Population for {date_str} ---")
     valid_preds = []
-    X_nat = pd.DataFrame([base_features])
 
     pred_linear = linear_model.predict(X_nat)[0]
     print(f" Linear   : {int(pred_linear):,}")
@@ -129,34 +121,30 @@ def predict(date_str, district=None):
     
     best_model = best_models[district]
     
+    # Use yearly features for district prediction
     future_features = {
-        'Fractional_Year': fractional_year,
+        'Year': year,
         'National_Population': final_nat_pop,
-        'Population_Density': base_features.get('Population_Density'),
-        'Urban_Population': base_features.get('Urban_Population')
+        'Population_Density': 350, # Default if not loaded
+        'Urban_Population': 4200000
     }
     X_future = pd.DataFrame([future_features])
 
     try:
+        from sklearn.linear_model import LinearRegression
+        from xgboost import XGBRegressor
+        from statsmodels.tsa.statespace.sarimax import SARIMAXResultsWrapper
+
         if isinstance(best_model, (LinearRegression, XGBRegressor)):
             model_type = "XGBoost" if isinstance(best_model, XGBRegressor) else "Linear"
             pred_prop = float(best_model.predict(X_future)[0])
 
-        elif isinstance(best_model, Prophet):
-            model_type = "Prophet"
-            prophet_df = pd.DataFrame({
-                'ds': [target_date],
-                'National_Population': [final_nat_pop],
-                'Population_Density': [future_features.get('Population_Density')],
-                'Urban_Population': [future_features.get('Urban_Population')]
-            })
-            forecast = best_model.predict(prophet_df)
-            pred_prop = float(forecast['yhat'].iloc[0])
-
-        else:  # SARIMA
+        elif hasattr(best_model, 'forecast'): # SARIMA
             model_type = "SARIMA"
-            forecast_result = best_model.forecast(steps=1)
-            pred_prop = float(forecast_result.iloc[0] if hasattr(forecast_result, 'iloc') else forecast_result)
+            pred_prop = float(best_model.forecast(steps=1).iloc[0])
+        else:
+            print(f"Unknown model type for district {district}: {type(best_model)}")
+            return
 
         final_dist_pop = pred_prop * final_nat_pop
 

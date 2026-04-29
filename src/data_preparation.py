@@ -57,8 +57,19 @@ def prepare_dataset():
     df_monthly = pd.get_dummies(df_monthly, columns=['Season'])
     # =======================================================
 
+    # Core lag and rolling features
     df_monthly["Population_Lag_1M"] = df_monthly["Population"].shift(1)
     df_monthly["Population_Lag_12M"] = df_monthly["Population"].shift(12)
+    df_monthly["Population_RollingMean_3M"] = df_monthly["Population"].rolling(window=3, min_periods=3).mean()
+
+    # Cyclical month encoding
+    df_monthly["month_sin"] = np.sin(2 * np.pi * df_monthly["Month"] / 12.0)
+    df_monthly["month_cos"] = np.cos(2 * np.pi * df_monthly["Month"] / 12.0)
+
+    # Lagged external drivers for exogenous models
+    for col in ["Birth_Rate", "Deaths_per_1000", "Population_Density", "Urban_Population", "Rural_Population"]:
+        if col in df_monthly.columns:
+            df_monthly[f"{col}_Lag_1M"] = df_monthly[col].shift(1)
 
     df_monthly.dropna(inplace=True)
 

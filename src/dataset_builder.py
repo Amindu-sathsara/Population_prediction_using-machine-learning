@@ -3,6 +3,33 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
+
+def add_common_time_features(df: pd.DataFrame, target_col: str, group_col: str | None = None) -> pd.DataFrame:
+    """Add lag/rolling/cyclical features to a monthly dataframe."""
+    out = df.copy().sort_values([group_col, "Date"] if group_col else ["Date"]).reset_index(drop=True)
+
+    out["lag_1"] = np.nan
+    out["lag_12"] = np.nan
+    out["rolling_mean_3"] = np.nan
+
+    if group_col:
+        out["lag_1"] = out.groupby(group_col)[target_col].shift(1)
+        out["lag_12"] = out.groupby(group_col)[target_col].shift(12)
+        out["rolling_mean_3"] = (
+            out.groupby(group_col)[target_col]
+            .rolling(window=3, min_periods=3)
+            .mean()
+            .reset_index(level=0, drop=True)
+        )
+    else:
+        out["lag_1"] = out[target_col].shift(1)
+        out["lag_12"] = out[target_col].shift(12)
+        out["rolling_mean_3"] = out[target_col].rolling(window=3, min_periods=3).mean()
+
+    out["month_sin"] = np.sin(2 * np.pi * out["Month"] / 12.0)
+    out["month_cos"] = np.cos(2 * np.pi * out["Month"] / 12.0)
+    return out
+
 def create_dataset():
     raw_dir = Path("data/raw")
     processed_dir = Path("data/processed")
@@ -93,6 +120,20 @@ def create_dataset():
         monthly_data.append(interp_row)
 
     monthly_nat_df = pd.DataFrame(monthly_data)
+    monthly_nat_df = add_common_time_features(monthly_nat_df, target_col="National_Population")
+
+    # Lagged exogenous drivers for SARIMAX / tree models
+    for driver_col in [
+        "Birth_Rate",
+        "Death_Rate",
+        "Population_Density",
+        "Rural_Population",
+        "Urban_Population",
+    ]:
+        monthly_nat_df[f"{driver_col}_lag1"] = monthly_nat_df[driver_col].shift(1)
+
+    monthly_nat_df.dropna(inplace=True)
+    monthly_nat_df.reset_index(drop=True, inplace=True)
     monthly_nat_df.to_csv(processed_dir / "national_master_monthly.csv", index=False)
     print(f"Saved National Monthly data: {len(monthly_nat_df)} rows")
 
@@ -146,9 +187,28 @@ def create_dataset():
         on="Date", 
         how="left"
     )
+
+    # District-specific lag/rolling features + global national driver lags
+    monthly_dist_df = add_common_time_features(
+        monthly_dist_df,
+        target_col="District_Total",
+        group_col="District",
+    )
+    monthly_dist_df["national_lag_1"] = monthly_dist_df["National_Population"].shift(1)
+    monthly_dist_df["national_lag_12"] = monthly_dist_df["National_Population"].shift(12)
+    monthly_dist_df.dropna(inplace=True)
+    monthly_dist_df.reset_index(drop=True, inplace=True)
     
     monthly_dist_df.to_csv(processed_dir / "district_master_monthly.csv", index=False)
-    print(f"Saved District Monthly data: {len(monthly_dist_df)} rows")
+    
+    # --- NEW: Create Yearly Master for Overfitting-Free Training ---
+    print("Creating Yearly Master datasets...")
+    nat_df.to_csv(processed_dir / "national_master_yearly.csv", index=False)
+    
+    # District yearly
+    district_df.to_csv(processed_dir / "district_master_yearly.csv", index=False)
+    
+    print("Saved Yearly datasets for robust training.")
     print("Done!")
 
 if __name__ == "__main__":

@@ -747,7 +747,11 @@ def _predict_existing_national(date: pd.Timestamp) -> dict:
     year = date.year
     month = date.month
     fractional_year = year + (month - 1) / 12.0
-    base_features = {"Fractional_Year": fractional_year}
+    base_features = {
+        "Fractional_Year": fractional_year,
+        "Month_Sin": np.sin(2 * np.pi * month / 12.0),
+        "Month_Cos": np.cos(2 * np.pi * month / 12.0),
+    }
 
     if feature_cols and driver_models:
         driver_values = {}
